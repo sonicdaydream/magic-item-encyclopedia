@@ -77,8 +77,8 @@ const rarityPrompts = {
   mythic: "神話級の力を宿す至高のアイテムとして"
 };
 
-// 伝承のバリエーション
-const loreStyles = [
+// 背景設定のバリエーション
+const backgroundStyles = [
   "現代の技術革新により生まれた",
   "職人の匠の技によって生み出された",
   "日常生活の中で重要な役割を果たす",
@@ -90,7 +90,10 @@ const loreStyles = [
   "生活を豊かにする力を持つ",
   "使う人の心を満たす",
   "古くから伝わる製法で作られた",
-  "現代生活に欠かせない存在となった"
+  "現代生活に欠かせない存在となった",
+  "伝統と革新が融合して生まれた",
+  "特別な想いが込められた",
+  "匠の技と情熱が結実した"
 ];
 
 export async function POST(request: NextRequest) {
@@ -146,10 +149,10 @@ export async function POST(request: NextRequest) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // ランダムな伝承スタイルを選択
-    const randomLoreStyle = loreStyles[Math.floor(Math.random() * loreStyles.length)];
+    // ランダムな背景スタイルを選択
+    const randomBackgroundStyle = backgroundStyles[Math.floor(Math.random() * backgroundStyles.length)];
 
-    // プロンプトの構築
+    // プロンプトの構築（descriptionとloreを統合）
     const rarityPrompt = rarityPrompts[rarity as keyof typeof rarityPrompts] || rarityPrompts.common;
     const prompt = `
 この画像のアイテムを${rarityPrompt}、神秘的で幻想的な世界観で分析してください。
@@ -157,24 +160,28 @@ export async function POST(request: NextRequest) {
 以下のJSON形式で回答してください：
 {
   "name": "アイテム名（日本語、神秘的で興味深い名前）",
-  "description": "アイテムの詳細説明（150-200文字、神秘的で幻想的な雰囲気のある文章）",
-  "effect": "特殊効果や能力（50-100文字、${rarity}レア度に相応しい効果）",
-  "lore": "アイテムの背景や物語（100-150文字、神秘的で詩的な表現）"
+  "description": "アイテムの詳細説明と背景を統合した内容（120-150文字、ダークソウルらしい硬質で神秘的な文体、である調で格調高く）",
+  "effect": "特殊効果や能力（50-100文字、${rarity}レア度に相応しい効果、ダークソウル風の硬質な文体で）"
 }
 
 重要な指示：
-- lore（伝承）部分は「${randomLoreStyle}」という表現を含めて、現代的な視点も取り入れてください
+- description部分は、アイテムの外見・特徴と背景を簡潔に組み合わせてください
+- ダークソウルらしい硬質で神秘的な文体で記述してください（である調、断定的、格調高い表現）
+- 「です・ます調」は一切使わず、「〜である」「〜なり」「〜という」などの古風な語尾を使用
+- 背景の表現として「${randomBackgroundStyle}」という要素を含めて、現代的な視点も取り入れてください
 - 必ずしも古代の遺物である必要はありません
 - 現代のアイテムでも、それが持つ特別な意味や価値を神秘的に表現してください
 - 「遥か昔」「混沌の時代」などの古代表現に偏らず、多様な背景設定を使ってください
+- descriptionは150文字以内で読みやすく、簡潔にまとめてください
+- 曰くありげで物語性のある表現を心がけてください
 
 レア度「${rarity}」に相応しい内容にしてください：
-- common: 身近で親しみやすい効果
-- uncommon: やや特殊な効果
-- rare: 注目すべき特別な能力
-- epic: 強力で印象的な効果
-- legendary: 伝説級の圧倒的な力
-- mythic: 神話級の究極の能力
+- common: 身近で親しみやすい効果と説明
+- uncommon: やや特殊な効果と興味深い背景
+- rare: 注目すべき特別な能力と価値ある歴史
+- epic: 強力で印象的な効果と卓越した背景
+- legendary: 伝説級の圧倒的な力と壮大な物語
+- mythic: 神話級の究極の能力と超越的な起源
 
 必ずJSONフォーマットのみで回答し、余計な説明は含めないでください。
 `;
@@ -203,31 +210,37 @@ export async function POST(request: NextRequest) {
         throw new Error('JSON format not found in response');
       }
     } catch (parseError) {
-      // フォールバック: レア度に応じた多様な背景設定
-      const fallbackLores = {
-        mythic: "宇宙の法則を司る究極の力を宿し、存在するだけで周囲の現実を変化させる奇跡のアイテム。",
-        legendary: "世界中の専門家が認める最高級の品質を誇り、所有者に絶大な信頼と威厳をもたらす逸品。",
-        epic: "革新的な技術と伝統的な技法が融合して生まれた、時代を超越する傑作。",
-        rare: "熟練した職人の手によって丹精込めて作られた、特別な価値を持つ貴重品。",
-        uncommon: "こだわりの素材と独特な製法で作られた、知る人ぞ知る隠れた名品。",
-        common: "日常生活に欠かせない存在として多くの人に愛され、生活を支える頼もしいパートナー。"
+      // フォールバック: レア度に応じたダークソウル風の説明
+      const fallbackDescriptions = {
+        mythic: "宇宙の法則を司る究極の力を宿し、存在するだけで周囲の現実を変化させる奇跡の遺物である。その起源は時空を超越した次元にあり、選ばれし者のみが真の力を解放しうるという。",
+        legendary: "世界中の専門家が認める最高級の品質を誇り、所有者に絶大な信頼と威厳をもたらす逸品なり。長き歴史の中で数々の偉大なる人物たちに愛用され、その功績と共に語り継がれている。",
+        epic: "革新的な技術と伝統的な技法が融合して生まれし、時代を超越する傑作である。熟練せし職人たちの情熱と技術の粋を集めて作られ、使用者に特別なる体験をもたらすという。",
+        rare: "熟練せし職人の手によって丹精込めて作られし、特別な価値を持つ貴重品である。厳選されし素材と伝統的な製法により生み出され、所有者に誇りと満足をもたらすという。",
+        uncommon: "こだわりの素材と独特な製法で作られし、知る人ぞ知る隠れたる名品である。一般的なものとは一線を画す特別な魅力を持ち、使用者に新たなる発見と喜びをもたらすという。",
+        common: "日常に欠かせぬ存在として多くの人に愛され、生活を支える頼もしき相棒である。シンプルでありながら使いやすく設計され、毎日の暮らしに安心と便利さをもたらすという。"
       };
 
       const effectByRarity = {
-        mythic: "現実を意のままに操る究極の力",
-        legendary: "伝説級の圧倒的な特殊能力",
-        epic: "強力な魔法効果を発動",
-        rare: "特別な能力を秘めている",
-        uncommon: "軽微な特殊効果を持つ",
-        common: "日常を豊かにする基本効果"
+        mythic: "現実を意のままに操る究極の力を発動せしむ",
+        legendary: "伝説級の圧倒的なる特殊能力を解放する",
+        epic: "強力なる魔法効果を継続的に発動せしむ", 
+        rare: "特別なる能力を安定して発揮するという",
+        uncommon: "軽微なる特殊効果を定期的に発動する",
+        common: "日常を豊かにする基本効果をもたらすという"
       };
 
       parsedResult = {
-        name: "神秘のアイテム",
-        description: "見た目は普通でも、その内側には計り知れない力が宿っている。使用者の心の在り方によって真価を発揮する、不思議な魅力を持つアイテム。",
-        effect: effectByRarity[rarity as keyof typeof effectByRarity] || effectByRarity.common,
-        lore: fallbackLores[rarity as keyof typeof fallbackLores] || fallbackLores.common
+        name: "神秘なる遺物",
+        description: fallbackDescriptions[rarity as keyof typeof fallbackDescriptions] || fallbackDescriptions.common,
+        effect: effectByRarity[rarity as keyof typeof effectByRarity] || effectByRarity.common
       };
+    }
+
+    // レスポンスの検証（loreフィールドがある場合は削除）
+    if (parsedResult.lore) {
+      // loreがある場合はdescriptionと統合
+      parsedResult.description = `${parsedResult.description} ${parsedResult.lore}`;
+      delete parsedResult.lore;
     }
     
     // レスポンス返却（制限情報も含める）
