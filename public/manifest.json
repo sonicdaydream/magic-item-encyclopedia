@@ -1,0 +1,12 @@
+{
+    "name": "魔法アイテム図鑑",
+    "short_name": "魔法図鑑",
+    "description": "身の回りのアイテムに秘められた魔法の力を解き明かすPWAアプリ",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#1a1a1a",
+    "theme_color": "#ff8000",
+    "orientation": "portrait",
+    "scope": "/",
+    "lang": "ja"
+  }
