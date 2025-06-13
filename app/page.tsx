@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-// 型定義を追加
+// 型定義を更新（loreとdescriptionを統合）
 interface Item {
   id: number;
   name: string;
-  description: string;
+  description: string; // 説明と伝承を統合
   effect: string;
-  lore: string;
   rarity: string;
   image: string;
   timestamp: string;
@@ -27,6 +26,24 @@ export default function Home() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'camera' | 'file'>('camera');
+
+  // サポートする画像形式を拡張
+  const supportedImageTypes = [
+    'image/jpeg',
+    'image/jpg', 
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'image/bmp',
+    'image/tiff',
+    'image/svg+xml',
+    'image/avif',
+    'image/heic',
+    'image/heif'
+  ];
+
+  // ファイルサイズ制限（10MB）
+  const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
   // レア度の定義
   const rarities = {
@@ -90,6 +107,27 @@ export default function Home() {
     }
   };
 
+  // 画像ファイルのバリデーション
+  const validateImageFile = (file: File): { isValid: boolean; error?: string } => {
+    // ファイルサイズチェック
+    if (file.size > MAX_FILE_SIZE) {
+      return {
+        isValid: false,
+        error: `ファイルサイズが大きすぎます。${Math.round(MAX_FILE_SIZE / 1024 / 1024)}MB以下のファイルを選択してください。`
+      };
+    }
+
+    // ファイル形式チェック
+    if (!supportedImageTypes.includes(file.type)) {
+      return {
+        isValid: false,
+        error: `対応していないファイル形式です。JPEG、PNG、WebP、GIF、BMP等の画像ファイルを選択してください。`
+      };
+    }
+
+    return { isValid: true };
+  };
+
   // 入力モード切り替え
   const switchInputMode = (mode: 'camera' | 'file') => {
     setInputMode(mode);
@@ -112,7 +150,7 @@ export default function Home() {
       setStream(mediaStream);
     } catch (error) {
       console.error('カメラアクセスエラー:', error);
-      alert('カメラにアクセスできませんでした。');
+      alert('カメラにアクセスできませんでした。カメラの使用許可を確認してください。');
     }
   };
 
@@ -127,15 +165,27 @@ export default function Home() {
   // ファイル選択
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setSelectedImage(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      alert('画像ファイルを選択してください。');
+    if (!file) return;
+
+    const validation = validateImageFile(file);
+    if (!validation.isValid) {
+      alert(validation.error);
+      // ファイル入力をリセット
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
     }
+
+    // 画像を読み込み
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setSelectedImage(e.target?.result as string);
+    };
+    reader.onerror = () => {
+      alert('画像ファイルの読み込みに失敗しました。別のファイルをお試しください。');
+    };
+    reader.readAsDataURL(file);
   };
 
   // 写真撮影
@@ -205,17 +255,22 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error('API呼び出しに失敗しました');
+        const errorText = await response.text();
+        throw new Error(`API呼び出しに失敗しました: ${response.status} ${errorText}`);
       }
 
       const result = await response.json();
       
+      // APIレスポンスのバリデーション
+      if (!result.name || !result.description) {
+        throw new Error('APIから不正なレスポンスが返されました。');
+      }
+      
       const newItem: Item = {
         id: Date.now(),
         name: result.name,
-        description: result.description,
-        effect: result.effect,
-        lore: result.lore,
+        description: result.description, // 説明と伝承を統合
+        effect: result.effect || '',
         rarity: rarity,
         image: imageData,
         timestamp: new Date().toISOString()
@@ -227,7 +282,21 @@ export default function Home() {
       
     } catch (error) {
       console.error('分析エラー:', error);
-      alert('アイテムの分析に失敗しました。もう一度お試しください。');
+      
+      let errorMessage = 'アイテムの分析に失敗しました。';
+      if (error instanceof Error) {
+        if (error.message.includes('Failed to fetch')) {
+          errorMessage = 'ネットワークエラー: インターネット接続を確認してください。';
+        } else if (error.message.includes('413')) {
+          errorMessage = '画像ファイルが大きすぎます。より小さいファイルをお試しください。';
+        } else if (error.message.includes('400')) {
+          errorMessage = '画像の形式に問題があります。別の画像をお試しください。';
+        } else {
+          errorMessage += ` (${error.message})`;
+        }
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -342,7 +411,7 @@ export default function Home() {
             <div className="file-section">
               <input
                 type="file"
-                accept="image/*"
+                accept={supportedImageTypes.join(',')}
                 ref={fileInputRef}
                 onChange={handleFileSelect}
                 style={{ display: 'none' }}
@@ -378,7 +447,8 @@ export default function Home() {
                     <div className="drop-zone-content">
                       <div className="drop-icon">📸</div>
                       <p>画像をクリックして選択</p>
-                      <p className="drop-hint">JPG, PNG, WebP形式に対応</p>
+                      <p className="drop-hint">JPEG, PNG, WebP, GIF, BMP等に対応</p>
+                      <p className="drop-hint">最大ファイルサイズ: 10MB</p>
                     </div>
                   </div>
                 )}
@@ -409,18 +479,14 @@ export default function Home() {
                 </div>
                 
                 <div className="item-description">
+                  <h3>説明</h3>
                   <p>{currentItem.description}</p>
                 </div>
                 
                 {currentItem.effect && (
                   <div className="item-effect">
-                    <strong>魔法効果:</strong> {currentItem.effect}
-                  </div>
-                )}
-                
-                {currentItem.lore && (
-                  <div className="item-lore">
-                    <em>"{currentItem.lore}"</em>
+                    <h3>魔法効果</h3>
+                    <p>{currentItem.effect}</p>
                   </div>
                 )}
               </div>
@@ -495,13 +561,6 @@ export default function Home() {
                   <div className="modal-effect">
                     <h3>魔法効果</h3>
                     <p>{modalItem.effect}</p>
-                  </div>
-                )}
-                
-                {modalItem.lore && (
-                  <div className="modal-lore">
-                    <h3>伝説</h3>
-                    <p><em>"{modalItem.lore}"</em></p>
                   </div>
                 )}
                 
@@ -783,23 +842,25 @@ export default function Home() {
           text-transform: uppercase;
         }
 
-        .item-description {
-          margin-bottom: 1rem;
+        .item-description, .item-effect {
+          margin-bottom: 1.5rem;
+        }
+
+        .item-description h3, .item-effect h3 {
+          color: #ff8000;
+          margin: 0 0 0.5rem 0;
+          font-size: 1.1rem;
+        }
+
+        .item-description p, .item-effect p {
+          margin: 0;
           line-height: 1.6;
         }
 
         .item-effect {
           background: rgba(255, 255, 255, 0.1);
-          padding: 0.75rem;
+          padding: 1rem;
           border-radius: 6px;
-          margin-bottom: 1rem;
-        }
-
-        .item-lore {
-          font-style: italic;
-          color: #ccc;
-          border-left: 3px solid #666;
-          padding-left: 1rem;
         }
 
         .collection {
@@ -978,17 +1039,6 @@ export default function Home() {
           padding: 1rem;
           border-radius: 6px;
           margin-bottom: 1.5rem;
-        }
-
-        .modal-lore {
-          border-left: 3px solid #666;
-          padding-left: 1rem;
-          margin-bottom: 1.5rem;
-        }
-
-        .modal-lore p {
-          color: #ccc;
-          font-style: italic;
         }
 
         .modal-timestamp {
