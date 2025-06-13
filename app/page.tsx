@@ -2,19 +2,31 @@
 
 import { useState, useEffect, useRef } from 'react';
 
+// 型定義を追加
+interface Item {
+  id: number;
+  name: string;
+  description: string;
+  effect: string;
+  lore: string;
+  rarity: string;
+  image: string;
+  timestamp: string;
+}
+
 export default function Home() {
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [currentItem, setCurrentItem] = useState(null);
+  const [currentItem, setCurrentItem] = useState<Item | null>(null);
   const [showCollection, setShowCollection] = useState(false);
   const [showItemModal, setShowItemModal] = useState(false);
-  const [modalItem, setModalItem] = useState(null);
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const [stream, setStream] = useState(null);
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [inputMode, setInputMode] = useState('camera'); // 'camera' or 'file'
+  const [modalItem, setModalItem] = useState<Item | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [inputMode, setInputMode] = useState<'camera' | 'file'>('camera');
 
   // レア度の定義
   const rarities = {
@@ -35,7 +47,7 @@ export default function Home() {
   }, []);
 
   // コレクションをローカルストレージに保存（エラーハンドリング付き）
-  const saveItems = (newItems) => {
+  const saveItems = (newItems: Item[]) => {
     try {
       setItems(newItems);
       
@@ -48,7 +60,7 @@ export default function Home() {
       console.warn('⚠️ localStorage save failed:', error);
       
       // 容量オーバーの場合、古いデータを削除して再試行
-      if (error.name === 'QuotaExceededError') {
+      if (error instanceof Error && error.name === 'QuotaExceededError') {
         try {
           // 最新20件のみに制限
           const reducedItems = newItems.slice(0, 20);
@@ -79,7 +91,7 @@ export default function Home() {
   };
 
   // 入力モード切り替え
-  const switchInputMode = (mode) => {
+  const switchInputMode = (mode: 'camera' | 'file') => {
     setInputMode(mode);
     if (mode === 'file') {
       stopCamera();
@@ -94,7 +106,9 @@ export default function Home() {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' }
       });
-      videoRef.current.srcObject = mediaStream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
       setStream(mediaStream);
     } catch (error) {
       console.error('カメラアクセスエラー:', error);
@@ -111,12 +125,12 @@ export default function Home() {
   };
 
   // ファイル選択
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        setSelectedImage(e.target.result);
+        setSelectedImage(e.target?.result as string);
       };
       reader.readAsDataURL(file);
     } else {
@@ -125,10 +139,14 @@ export default function Home() {
   };
 
   // 写真撮影
-  const capturePhoto = () => {
+  const capturePhoto = (): string => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
+    
+    if (!canvas || !video) return '';
+    
     const context = canvas.getContext('2d');
+    if (!context) return '';
     
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -138,7 +156,7 @@ export default function Home() {
   };
 
   // レア度を決定する関数
-  const determineRarity = () => {
+  const determineRarity = (): string => {
     const rand = Math.random();
     if (rand < 0.40) return 'common';
     if (rand < 0.65) return 'uncommon';
@@ -150,7 +168,7 @@ export default function Home() {
 
   // アイテム分析
   const analyzeItem = async () => {
-    let imageData;
+    let imageData: string;
     
     if (inputMode === 'camera') {
       if (!stream) {
@@ -158,6 +176,10 @@ export default function Home() {
         return;
       }
       imageData = capturePhoto();
+      if (!imageData) {
+        alert('写真の撮影に失敗しました。');
+        return;
+      }
     } else {
       if (!selectedImage) {
         alert('まず画像を選択してください。');
@@ -188,7 +210,7 @@ export default function Home() {
 
       const result = await response.json();
       
-      const newItem = {
+      const newItem: Item = {
         id: Date.now(),
         name: result.name,
         description: result.description,
@@ -212,7 +234,7 @@ export default function Home() {
   };
 
   // アイテム削除
-  const deleteItem = (id) => {
+  const deleteItem = (id: number) => {
     const updatedItems = items.filter(item => item.id !== id);
     saveItems(updatedItems);
     if (currentItem && currentItem.id === id) {
@@ -225,7 +247,7 @@ export default function Home() {
   };
 
   // コレクションアイテムクリック
-  const handleCollectionItemClick = (item) => {
+  const handleCollectionItemClick = (item: Item) => {
     setModalItem(item);
     setShowItemModal(true);
   };
@@ -238,7 +260,7 @@ export default function Home() {
 
   // ESCキーでモーダルを閉じる
   useEffect(() => {
-    const handleEsc = (event) => {
+    const handleEsc = (event: KeyboardEvent) => {
       if (event.keyCode === 27) {
         closeModal();
       }
@@ -369,16 +391,16 @@ export default function Home() {
               <div 
                 className="item-card"
                 style={{ 
-                  borderColor: rarities[currentItem.rarity].color,
-                  boxShadow: rarities[currentItem.rarity].glow
+                  borderColor: rarities[currentItem.rarity as keyof typeof rarities].color,
+                  boxShadow: rarities[currentItem.rarity as keyof typeof rarities].glow
                 }}
               >
                 <div className="item-header">
-                  <h2 style={{ color: rarities[currentItem.rarity].color }}>
+                  <h2 style={{ color: rarities[currentItem.rarity as keyof typeof rarities].color }}>
                     {currentItem.name}
                   </h2>
-                  <span className="rarity-badge" style={{ color: rarities[currentItem.rarity].color }}>
-                    {rarities[currentItem.rarity].name}
+                  <span className="rarity-badge" style={{ color: rarities[currentItem.rarity as keyof typeof rarities].color }}>
+                    {rarities[currentItem.rarity as keyof typeof rarities].name}
                   </span>
                 </div>
                 
@@ -416,16 +438,16 @@ export default function Home() {
                 <div 
                   key={item.id} 
                   className="collection-item"
-                  style={{ borderColor: rarities[item.rarity].color }}
+                  style={{ borderColor: rarities[item.rarity as keyof typeof rarities].color }}
                   onClick={() => handleCollectionItemClick(item)}
                 >
                   <div className="collection-image-container">
                     <img src={item.image} alt={item.name} />
                   </div>
                   <div className="collection-item-info">
-                    <h3 style={{ color: rarities[item.rarity].color }}>{item.name}</h3>
-                    <span className="rarity-badge" style={{ color: rarities[item.rarity].color }}>
-                      {rarities[item.rarity].name}
+                    <h3 style={{ color: rarities[item.rarity as keyof typeof rarities].color }}>{item.name}</h3>
+                    <span className="rarity-badge" style={{ color: rarities[item.rarity as keyof typeof rarities].color }}>
+                      {rarities[item.rarity as keyof typeof rarities].name}
                     </span>
                     <button 
                       className="delete-btn"
@@ -449,11 +471,11 @@ export default function Home() {
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2 style={{ color: rarities[modalItem.rarity].color }}>
+              <h2 style={{ color: rarities[modalItem.rarity as keyof typeof rarities].color }}>
                 {modalItem.name}
               </h2>
-              <span className="rarity-badge" style={{ color: rarities[modalItem.rarity].color }}>
-                {rarities[modalItem.rarity].name}
+              <span className="rarity-badge" style={{ color: rarities[modalItem.rarity as keyof typeof rarities].color }}>
+                {rarities[modalItem.rarity as keyof typeof rarities].name}
               </span>
               <button className="close-btn" onClick={closeModal}>✕</button>
             </div>
