@@ -2,6 +2,21 @@
 
 import { useState, useEffect, useRef } from 'react';
 
+// Google Analytics 型定義
+declare global {
+  interface Window {
+    gtag: (...args: any[]) => void;
+  }
+}
+
+// Google Analytics トラッキング関数
+const trackEvent = (eventName: string, parameters: Record<string, any>) => {
+  if (typeof window !== 'undefined' && window.gtag) {
+    window.gtag('event', eventName, parameters);
+    console.log('📊 GA Event:', eventName, parameters);
+  }
+};
+
 // 型定義を更新（loreとdescriptionを統合）
 interface Item {
   id: number;
@@ -305,6 +320,15 @@ export default function Home() {
       const processedImage = await compressImage(file);
       setSelectedImage(processedImage);
       
+      // GA4 イベント送信: 画像アップロード
+      trackEvent('image_uploaded', {
+        event_category: 'user_action',
+        file_type: file.type || 'unknown',
+        file_size_kb: Math.round(file.size / 1024),
+        was_heif_converted: validation.needsConversion || false,
+        upload_method: 'file_select'
+      });
+      
       // 変換成功メッセージ
       if (validation.needsConversion) {
         console.log('✅ HEIF → JPEG conversion completed successfully');
@@ -369,7 +393,18 @@ export default function Home() {
     canvas.height = height;
     context.drawImage(video, 0, 0, width, height);
     
-    return canvas.toDataURL('image/jpeg', 0.8);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    
+    // GA4 イベント送信: カメラ撮影
+    if (dataUrl) {
+      trackEvent('camera_capture', {
+        event_category: 'user_action',
+        dimensions: `${width}x${height}`,
+        upload_method: 'camera'
+      });
+    }
+    
+    return dataUrl;
   };
 
   // レア度を決定する関数（より現実的な分布に調整）
@@ -447,6 +482,15 @@ export default function Home() {
       const updatedItems = [newItem, ...items];
       saveItems(updatedItems);
       
+      // GA4 イベント送信: アイテム鑑定
+      trackEvent('item_analyzed', {
+        event_category: 'engagement',
+        event_label: rarity,
+        rarity: rarity,
+        item_name: result.name || 'unknown',
+        input_method: inputMode
+      });
+      
     } catch (error) {
       console.error('分析エラー:', error);
       
@@ -501,6 +545,12 @@ export default function Home() {
         .register('/sw.js')
         .then((registration) => {
           console.log('✅ Service Worker registered successfully:', registration);
+          
+          // GA4 イベント送信: PWA対応
+          trackEvent('pwa_ready', {
+            event_category: 'pwa',
+            service_worker_status: 'registered'
+          });
         })
         .catch((error) => {
           console.log('❌ Service Worker registration failed:', error);
@@ -547,7 +597,15 @@ export default function Home() {
           </button>
           <button 
             className={`nav-btn ${showCollection ? 'active' : ''}`}
-            onClick={() => setShowCollection(true)}
+            onClick={() => {
+              setShowCollection(true);
+              
+              // GA4 イベント送信: 図鑑表示
+              trackEvent('collection_viewed', {
+                event_category: 'navigation',
+                collection_size: items.length
+              });
+            }}
           >
             📚 図鑑 ({items.length})
           </button>
