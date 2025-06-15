@@ -27,7 +27,7 @@ export default function Home() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'camera' | 'file'>('camera');
 
-  // サポートする画像形式を拡張
+  // サポートする画像形式を拡張（HEIF/HEIC変換対応）
   const supportedImageTypes = [
     'image/jpeg',
     'image/jpg', 
@@ -38,9 +38,16 @@ export default function Home() {
     'image/tiff',
     'image/svg+xml',
     'image/avif',
-    'image/heic',
-    'image/heif'
+    'image/heic',  // iPhone標準形式
+    'image/heif'   // iPhone標準形式
   ];
+
+  // ファイル入力のaccept属性用（HEIF/HEIC対応）
+  const acceptedFileTypes = [
+    ...supportedImageTypes,
+    '.heic',  // 拡張子での指定も追加
+    '.heif'   // 拡張子での指定も追加
+  ].join(',');
 
   // ファイルサイズ制限（10MB）
   const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -107,8 +114,8 @@ export default function Home() {
     }
   };
 
-  // 画像ファイルのバリデーション
-  const validateImageFile = (file: File): { isValid: boolean; error?: string } => {
+  // 画像ファイルのバリデーション（HEIF/HEIC対応強化）
+  const validateImageFile = (file: File): { isValid: boolean; error?: string; needsConversion?: boolean } => {
     // ファイルサイズチェック
     if (file.size > MAX_FILE_SIZE) {
       return {
@@ -117,15 +124,25 @@ export default function Home() {
       };
     }
 
-    // ファイル形式チェック
-    if (!supportedImageTypes.includes(file.type)) {
+    // HEIF/HEIC形式の検出
+    const isHeifFormat = file.type === 'image/heif' || file.type === 'image/heic' || 
+                        file.name.toLowerCase().endsWith('.heif') || 
+                        file.name.toLowerCase().endsWith('.heic');
+
+    // サポートする形式または変換可能な形式かチェック
+    const isSupportedFormat = supportedImageTypes.includes(file.type);
+    
+    if (!isSupportedFormat && !isHeifFormat) {
       return {
         isValid: false,
-        error: `対応していないファイル形式です。JPEG、PNG、WebP、GIF、BMP等の画像ファイルを選択してください。`
+        error: `対応していないファイル形式です。JPEG、PNG、WebP、HEIF等の画像ファイルを選択してください。`
       };
     }
 
-    return { isValid: true };
+    return { 
+      isValid: true, 
+      needsConversion: isHeifFormat 
+    };
   };
 
   // 入力モード切り替え
@@ -162,45 +179,106 @@ export default function Home() {
     }
   };
 
-  // 画像を圧縮する関数
+  // 画像を圧縮・変換する関数（HEIF→JPEG変換対応）
   const compressImage = (file: File, maxWidth: number = 800, maxHeight: number = 600, quality: number = 0.8): Promise<string> => {
     return new Promise((resolve, reject) => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const img = new Image();
       
+      // HEIF/HEIC形式の検出
+      const isHeifFormat = file.type === 'image/heif' || file.type === 'image/heic' || 
+                          file.name.toLowerCase().endsWith('.heif') || 
+                          file.name.toLowerCase().endsWith('.heic');
+      
       img.onload = () => {
-        // アスペクト比を保持してリサイズ
-        let { width, height } = img;
-        if (width > height) {
-          if (width > maxWidth) {
-            height = (height * maxWidth) / width;
-            width = maxWidth;
+        try {
+          // アスペクト比を保持してリサイズ
+          let { width, height } = img;
+          const originalWidth = width;
+          const originalHeight = height;
+          
+          if (width > height) {
+            if (width > maxWidth) {
+              height = (height * maxWidth) / width;
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = (width * maxHeight) / height;
+              height = maxHeight;
+            }
           }
-        } else {
-          if (height > maxHeight) {
-            width = (width * maxHeight) / height;
-            height = maxHeight;
+          
+          canvas.width = width;
+          canvas.height = height;
+          
+          if (ctx) {
+            // 白い背景を設定（透明度対応、HEIF変換時の安定性向上）
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 高品質な描画設定
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // 常にJPEGで出力（HEIF形式も含め、互換性を最大化）
+            const dataUrl = canvas.toDataURL('image/jpeg', quality);
+            
+            console.log('✅ Image processing successful:', {
+              originalFormat: file.type || 'unknown',
+              originalSize: file.size,
+              originalDimensions: `${originalWidth}x${originalHeight}`,
+              outputDimensions: `${width}x${height}`,
+              outputFormat: 'JPEG',
+              outputSize: dataUrl.length,
+              wasHeif: isHeifFormat,
+              conversionRatio: Math.round((dataUrl.length / file.size) * 100) + '%'
+            });
+            
+            // URL cleanup
+            URL.revokeObjectURL(img.src);
+            
+            resolve(dataUrl);
+          } else {
+            reject(new Error('Canvas context not available'));
           }
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', quality));
-        } else {
-          reject(new Error('Canvas context not available'));
+        } catch (error) {
+          console.error('❌ Canvas processing failed:', error);
+          URL.revokeObjectURL(img.src);
+          reject(error);
         }
       };
       
-      img.onerror = () => reject(new Error('Image load failed'));
+      img.onerror = (error) => {
+        console.error('❌ Image load failed:', {
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          isHeif: isHeifFormat,
+          error: error
+        });
+        URL.revokeObjectURL(img.src);
+        reject(new Error(`画像の読み込みに失敗しました。${isHeifFormat ? 'HEIF形式の変換' : 'ファイル形式'}に問題がある可能性があります。`));
+      };
+      
+      // ファイル情報をログ出力
+      console.log('📸 Starting image processing:', {
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: `${Math.round(file.size / 1024)}KB`,
+        isHeifFormat: isHeifFormat,
+        needsConversion: isHeifFormat ? 'HEIF → JPEG' : 'Compression only'
+      });
+      
+      // Blob URLを作成して画像を読み込み
       img.src = URL.createObjectURL(file);
     });
   };
 
-  // ファイル選択
+  // ファイル選択（HEIF→JPEG変換対応）
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -215,23 +293,48 @@ export default function Home() {
       return;
     }
 
+    // HEIF形式の場合、変換処理の説明を表示
+    if (validation.needsConversion) {
+      console.log('🔄 HEIF format detected, converting to JPEG...');
+    }
+
     try {
-      // 画像を圧縮してプレビュー
-      const compressedImage = await compressImage(file);
-      setSelectedImage(compressedImage);
-      console.log('✅ Image compressed and loaded successfully');
-    } catch (error) {
-      console.error('❌ Image compression failed:', error);
+      setIsLoading(true); // 変換中の表示
       
-      // フォールバック: 元の方法で読み込み
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setSelectedImage(e.target?.result as string);
-      };
-      reader.onerror = () => {
-        alert('画像ファイルの読み込みに失敗しました。別のファイルをお試しください。');
-      };
-      reader.readAsDataURL(file);
+      // 画像を圧縮・変換してプレビュー
+      const processedImage = await compressImage(file);
+      setSelectedImage(processedImage);
+      
+      // 変換成功メッセージ
+      if (validation.needsConversion) {
+        console.log('✅ HEIF → JPEG conversion completed successfully');
+      } else {
+        console.log('✅ Image processing completed successfully');
+      }
+      
+    } catch (error) {
+      console.error('❌ Image processing failed:', error);
+      
+      // エラーメッセージの詳細化
+      let errorMessage = '画像の処理に失敗しました。';
+      if (validation.needsConversion) {
+        errorMessage = 'HEIF形式の変換に失敗しました。別の形式（JPEG、PNG等）の画像をお試しください。';
+      } else if (error instanceof Error) {
+        if (error.message.includes('load failed')) {
+          errorMessage = '画像ファイルの読み込みに失敗しました。ファイルが破損している可能性があります。';
+        } else if (error.message.includes('Canvas')) {
+          errorMessage = 'ブラウザの画像処理機能でエラーが発生しました。別のブラウザまたは別の画像をお試しください。';
+        }
+      }
+      
+      alert(errorMessage);
+      
+      // ファイル入力をリセット
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -391,6 +494,32 @@ export default function Home() {
     setModalItem(null);
   };
 
+  // PWA Service Worker 登録
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((registration) => {
+          console.log('✅ Service Worker registered successfully:', registration);
+        })
+        .catch((error) => {
+          console.log('❌ Service Worker registration failed:', error);
+        });
+    }
+  }, []);
+
+  // ショートカットパラメータの処理
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const shortcut = urlParams.get('shortcut');
+    
+    if (shortcut === 'collection') {
+      setShowCollection(true);
+    } else if (shortcut === 'analyze') {
+      setShowCollection(false);
+    }
+  }, []);
+
   // ESCキーでモーダルを閉じる
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
@@ -475,7 +604,7 @@ export default function Home() {
             <div className="file-section">
               <input
                 type="file"
-                accept={supportedImageTypes.join(',')}
+                accept={acceptedFileTypes}
                 ref={fileInputRef}
                 onChange={handleFileSelect}
                 style={{ display: 'none' }}
@@ -491,8 +620,9 @@ export default function Home() {
                       <button 
                         onClick={() => fileInputRef.current?.click()} 
                         className="change-image-btn"
+                        disabled={isLoading}
                       >
-                        📎 画像を変更
+                        {isLoading ? '🔄 変換中...' : '📎 画像を変更'}
                       </button>
                       <button 
                         onClick={analyzeItem} 
@@ -506,13 +636,19 @@ export default function Home() {
                 ) : (
                   <div 
                     className="file-drop-zone"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => !isLoading && fileInputRef.current?.click()}
+                    style={{ opacity: isLoading ? 0.6 : 1, cursor: isLoading ? 'not-allowed' : 'pointer' }}
                   >
                     <div className="drop-zone-content">
-                      <div className="drop-icon">📸</div>
-                      <p>画像をクリックして選択</p>
-                      <p className="drop-hint">JPEG, PNG, WebP, GIF, BMP等に対応</p>
-                      <p className="drop-hint">最大ファイルサイズ: 10MB</p>
+                      <div className="drop-icon">{isLoading ? '🔄' : '📸'}</div>
+                      <p>{isLoading ? '画像を変換中...' : '画像をクリックして選択'}</p>
+                      {!isLoading && (
+                        <>
+                          <p className="drop-hint">JPEG, PNG, WebP, HEIF等に対応</p>
+                          <p className="drop-hint">iPhoneのHEIF形式も自動変換</p>
+                          <p className="drop-hint">最大ファイルサイズ: 10MB</p>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
