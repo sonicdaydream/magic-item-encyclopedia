@@ -162,8 +162,46 @@ export default function Home() {
     }
   };
 
+  // 画像を圧縮する関数
+  const compressImage = (file: File, maxWidth: number = 800, maxHeight: number = 600, quality: number = 0.8): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        // アスペクト比を保持してリサイズ
+        let { width, height } = img;
+        if (width > height) {
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = (width * maxHeight) / height;
+            height = maxHeight;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } else {
+          reject(new Error('Canvas context not available'));
+        }
+      };
+      
+      img.onerror = () => reject(new Error('Image load failed'));
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
   // ファイル選択
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -177,18 +215,27 @@ export default function Home() {
       return;
     }
 
-    // 画像を読み込み
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setSelectedImage(e.target?.result as string);
-    };
-    reader.onerror = () => {
-      alert('画像ファイルの読み込みに失敗しました。別のファイルをお試しください。');
-    };
-    reader.readAsDataURL(file);
+    try {
+      // 画像を圧縮してプレビュー
+      const compressedImage = await compressImage(file);
+      setSelectedImage(compressedImage);
+      console.log('✅ Image compressed and loaded successfully');
+    } catch (error) {
+      console.error('❌ Image compression failed:', error);
+      
+      // フォールバック: 元の方法で読み込み
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setSelectedImage(e.target?.result as string);
+      };
+      reader.onerror = () => {
+        alert('画像ファイルの読み込みに失敗しました。別のファイルをお試しください。');
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
-  // 写真撮影
+  // 写真撮影（圧縮機能付き）
   const capturePhoto = (): string => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
@@ -198,22 +245,39 @@ export default function Home() {
     const context = canvas.getContext('2d');
     if (!context) return '';
     
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0);
+    // リサイズして圧縮
+    const maxWidth = 800;
+    const maxHeight = 600;
+    let { width, height } = { width: video.videoWidth, height: video.videoHeight };
+    
+    if (width > height) {
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width;
+        width = maxWidth;
+      }
+    } else {
+      if (height > maxHeight) {
+        width = (width * maxHeight) / height;
+        height = maxHeight;
+      }
+    }
+    
+    canvas.width = width;
+    canvas.height = height;
+    context.drawImage(video, 0, 0, width, height);
     
     return canvas.toDataURL('image/jpeg', 0.8);
   };
 
-  // レア度を決定する関数
+  // レア度を決定する関数（より現実的な分布に調整）
   const determineRarity = (): string => {
     const rand = Math.random();
-    if (rand < 0.40) return 'common';
-    if (rand < 0.65) return 'uncommon';
-    if (rand < 0.80) return 'rare';
-    if (rand < 0.92) return 'epic';
-    if (rand < 0.98) return 'legendary';
-    return 'mythic';
+    if (rand < 0.70) return 'common';      // 70% - 普通のアイテムが大半
+    if (rand < 0.88) return 'uncommon';    // 18% - 時々珍しいものが出る
+    if (rand < 0.96) return 'rare';        // 8% - 希少なアイテム
+    if (rand < 0.99) return 'epic';        // 3% - 叙事詩級は滅多に出ない
+    if (rand < 0.998) return 'legendary';  // 0.8% - 伝説級は非常に稀
+    return 'mythic';                       // 0.2% - 神話級は超レア
   };
 
   // アイテム分析
