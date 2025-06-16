@@ -213,7 +213,7 @@ export default function Home() {
 
           try {
             // heic2anyライブラリを使用してJPEGに変換
-            if (typeof window.heic2any === 'undefined') {
+            if (typeof (window as any).heic2any === 'undefined') {
               throw new Error('HEIF変換ライブラリが読み込まれていません');
             }
 
