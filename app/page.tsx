@@ -41,6 +41,7 @@ export default function Home() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'camera' | 'file'>('camera');
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null); // 撮影した写真
 
   // サポートする画像形式を拡張（HEIF/HEIC変換対応）
   const supportedImageTypes = [
@@ -165,6 +166,7 @@ export default function Home() {
     setInputMode(mode);
     if (mode === 'file') {
       stopCamera();
+      setCapturedPhoto(null); // カメラで撮影した写真をクリア
     } else {
       setSelectedImage(null);
     }
@@ -362,6 +364,35 @@ export default function Home() {
     }
   };
 
+  // 写真撮影（プレビュー用）
+  const takePhoto = (): void => {
+    const dataUrl = capturePhoto();
+    if (dataUrl) {
+      setCapturedPhoto(dataUrl);
+      console.log('📸 Photo captured for preview');
+      
+      // GA4 イベント送信: 写真撮影
+      trackEvent('photo_taken', {
+        event_category: 'camera_interaction',
+        action: 'capture_for_preview'
+      });
+    } else {
+      alert('写真の撮影に失敗しました。');
+    }
+  };
+
+  // 撮影をやり直す
+  const retakePhoto = (): void => {
+    setCapturedPhoto(null);
+    console.log('🔄 Retaking photo');
+    
+    // GA4 イベント送信: 撮り直し
+    trackEvent('photo_retaken', {
+      event_category: 'camera_interaction',
+      action: 'retake_photo'
+    });
+  };
+
   // 写真撮影（圧縮機能付き）
   const capturePhoto = (): string => {
     const canvas = canvasRef.current;
@@ -423,15 +454,11 @@ export default function Home() {
     let imageData: string;
     
     if (inputMode === 'camera') {
-      if (!stream) {
-        alert('まずカメラを開始してください。');
+      if (!capturedPhoto) {
+        alert('まず写真を撮影してください。');
         return;
       }
-      imageData = capturePhoto();
-      if (!imageData) {
-        alert('写真の撮影に失敗しました。');
-        return;
-      }
+      imageData = capturedPhoto;
     } else {
       if (!selectedImage) {
         alert('まず画像を選択してください。');
@@ -632,31 +659,59 @@ export default function Home() {
 
           {inputMode === 'camera' ? (
             <div className="camera-section">
-              <div className="video-container">
-                <video ref={videoRef} autoPlay playsInline className="camera-video" />
-              </div>
-              <canvas ref={canvasRef} style={{ display: 'none' }} />
-              
-              <div className="camera-controls">
-                {!stream ? (
-                  <button onClick={startCamera} className="camera-btn start">
-                    📹 カメラ開始
-                  </button>
-                ) : (
-                  <>
-                    <button onClick={stopCamera} className="camera-btn stop">
-                      ⏹️ カメラ停止
+              {!capturedPhoto ? (
+                // ライブカメラビューまたは撮影ボタン
+                <>
+                  <div className="video-container">
+                    <video ref={videoRef} autoPlay playsInline className="camera-video" />
+                  </div>
+                  <canvas ref={canvasRef} style={{ display: 'none' }} />
+                  
+                  <div className="camera-controls">
+                    {!stream ? (
+                      <button onClick={startCamera} className="camera-btn start">
+                        📹 カメラ開始
+                      </button>
+                    ) : (
+                      <>
+                        <button onClick={stopCamera} className="camera-btn stop">
+                          ⏹️ カメラ停止
+                        </button>
+                        <button 
+                          onClick={takePhoto} 
+                          className="camera-btn capture"
+                          disabled={isLoading}
+                        >
+                          📷 写真を撮る
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </>
+              ) : (
+                // 撮影した写真のプレビュー
+                <div className="captured-photo-preview">
+                  <div className="image-container">
+                    <img src={capturedPhoto} alt="撮影した写真" className="preview-image" />
+                  </div>
+                  <div className="photo-actions">
+                    <button 
+                      onClick={retakePhoto} 
+                      className="retake-btn"
+                      disabled={isLoading}
+                    >
+                      🔄 撮り直し
                     </button>
                     <button 
                       onClick={analyzeItem} 
-                      className="camera-btn analyze"
+                      className="analyze-btn"
                       disabled={isLoading}
                     >
                       {isLoading ? '🔄 鑑定中...' : '✨ アイテム鑑定'}
                     </button>
-                  </>
-                )}
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="file-section">
@@ -789,6 +844,19 @@ export default function Home() {
           )}
         </div>
       )}
+
+      {/* フッター */}
+      <footer className="app-footer">
+        <div className="footer-content">
+          <div className="footer-links">
+            <a href="/privacy" className="footer-link">🔒 プライバシーポリシー</a>
+            <a href="/contact" className="footer-link">📧 お問い合わせ</a>
+          </div>
+          <div className="footer-info">
+            <p>&copy; 2025 魔法アイテム図鑑 v1.0.0</p>
+          </div>
+        </div>
+      </footer>
 
       {/* アイテム詳細モーダル */}
       {showItemModal && modalItem && (
@@ -1051,6 +1119,48 @@ export default function Home() {
           color: white;
         }
 
+        .camera-btn.capture {
+          background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+          color: white;
+          font-weight: bold;
+          font-size: 1.1rem;
+          padding: 1rem 2rem;
+        }
+
+        .captured-photo-preview {
+          text-align: center;
+        }
+
+        .photo-actions {
+          display: flex;
+          gap: 1rem;
+          justify-content: center;
+          flex-wrap: wrap;
+          margin-top: 1rem;
+        }
+
+        .retake-btn {
+          padding: 0.75rem 1.5rem;
+          background: #666;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+
+        .retake-btn:hover {
+          background: #555;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .retake-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
+        }
+
         .camera-btn.analyze {
           background: linear-gradient(45deg, #ff8000, #ffb347);
           color: white;
@@ -1306,6 +1416,55 @@ export default function Home() {
           padding-top: 1rem;
         }
 
+        /* フッタースタイル */
+        .app-footer {
+          background: rgba(0, 0, 0, 0.9);
+          border-top: 2px solid #444;
+          margin-top: 3rem;
+          padding: 2rem 0;
+        }
+
+        .footer-content {
+          max-width: 800px;
+          margin: 0 auto;
+          text-align: center;
+          padding: 0 2rem;
+        }
+
+        .footer-links {
+          display: flex;
+          justify-content: center;
+          gap: 2rem;
+          margin-bottom: 1rem;
+          flex-wrap: wrap;
+        }
+
+        .footer-link {
+          color: #ff8000;
+          text-decoration: none;
+          font-size: 0.9rem;
+          transition: all 0.3s ease;
+          padding: 0.5rem 1rem;
+          border-radius: 4px;
+        }
+
+        .footer-link:hover {
+          color: #ffb347;
+          background: rgba(255, 128, 0, 0.1);
+          transform: translateY(-1px);
+        }
+
+        .footer-info {
+          color: #666;
+          font-size: 0.8rem;
+          border-top: 1px solid #333;
+          padding-top: 1rem;
+        }
+
+        .footer-info p {
+          margin: 0;
+        }
+
         @media (max-width: 768px) {
           .header h1 {
             font-size: 1.5rem;
@@ -1315,12 +1474,12 @@ export default function Home() {
             padding: 1rem;
           }
           
-          .camera-controls, .image-actions {
+          .camera-controls, .image-actions, .photo-actions {
             flex-direction: column;
             align-items: center;
           }
           
-          .camera-btn, .change-image-btn, .analyze-btn {
+          .camera-btn, .change-image-btn, .analyze-btn, .retake-btn {
             width: 100%;
             max-width: 300px;
           }
@@ -1350,6 +1509,16 @@ export default function Home() {
 
           .modal-header h2 {
             font-size: 1.2rem;
+          }
+
+          .footer-links {
+            flex-direction: column;
+            gap: 1rem;
+          }
+
+          .footer-link {
+            font-size: 1rem;
+            padding: 0.75rem;
           }
         }
       `}</style>
