@@ -212,12 +212,14 @@ export default function Home() {
           console.log('🔄 Converting HEIF/HEIC to JPEG...');
 
           try {
-            // heic2anyライブラリを使用してJPEGに変換
-            if (typeof (window as any).heic2any === 'undefined') {
+            // @ts-ignore - heic2anyライブラリが動的に読み込まれるため
+            const heic2any = window.heic2any;
+            
+            if (typeof heic2any === 'undefined') {
               throw new Error('HEIF変換ライブラリが読み込まれていません');
             }
 
-            const convertedBlob = await window.heic2any({
+            const convertedBlob = await heic2any({
               blob: file,
               toType: 'image/jpeg',
               quality: 0.9
@@ -322,17 +324,6 @@ export default function Home() {
       }
     });
   };
-
-  // TypeScript型定義の追加
-  declare global {
-    interface Window {
-      heic2any: (options: {
-        blob: File | Blob;
-        toType: string;
-        quality?: number;
-      }) => Promise<Blob | Blob[]>;
-    }
-  }
 
   // ファイル選択（HEIF→JPEG変換対応）
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
