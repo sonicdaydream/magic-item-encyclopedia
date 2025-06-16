@@ -46,7 +46,7 @@ export default function Home() {
   // サポートする画像形式を拡張（HEIF/HEIC変換対応）
   const supportedImageTypes = [
     'image/jpeg',
-    'image/jpg', 
+    'image/jpg',
     'image/png',
     'image/webp',
     'image/gif',
@@ -90,15 +90,15 @@ export default function Home() {
   const saveItems = (newItems: Item[]) => {
     try {
       setItems(newItems);
-      
+
       // アイテム数を制限（最新50件のみ保持）
       const limitedItems = newItems.slice(0, 50);
-      
+
       localStorage.setItem('magicItemCollection', JSON.stringify(limitedItems));
       console.log('✅ Items saved successfully:', limitedItems.length, 'items');
     } catch (error) {
       console.warn('⚠️ localStorage save failed:', error);
-      
+
       // 容量オーバーの場合、古いデータを削除して再試行
       if (error instanceof Error && error.name === 'QuotaExceededError') {
         try {
@@ -106,12 +106,12 @@ export default function Home() {
           const reducedItems = newItems.slice(0, 20);
           localStorage.setItem('magicItemCollection', JSON.stringify(reducedItems));
           console.log('✅ Items saved with reduced count:', reducedItems.length, 'items');
-          
+
           // ユーザーに通知
           alert('図鑑が満杯になったため、古いアイテムを整理しました。最新の発見を優先して保存します。');
         } catch (secondError) {
           console.error('❌ Failed to save even reduced items:', secondError);
-          
+
           // 完全にクリアして新しいアイテムのみ保存
           try {
             localStorage.removeItem('magicItemCollection');
@@ -124,7 +124,7 @@ export default function Home() {
           }
         }
       }
-      
+
       // メモリ上のstateは更新（表示は正常に機能）
       setItems(newItems);
     }
@@ -141,13 +141,13 @@ export default function Home() {
     }
 
     // HEIF/HEIC形式の検出
-    const isHeifFormat = file.type === 'image/heif' || file.type === 'image/heic' || 
-                        file.name.toLowerCase().endsWith('.heif') || 
-                        file.name.toLowerCase().endsWith('.heic');
+    const isHeifFormat = file.type === 'image/heif' || file.type === 'image/heic' ||
+      file.name.toLowerCase().endsWith('.heif') ||
+      file.name.toLowerCase().endsWith('.heic');
 
     // サポートする形式または変換可能な形式かチェック
     const isSupportedFormat = supportedImageTypes.includes(file.type);
-    
+
     if (!isSupportedFormat && !isHeifFormat) {
       return {
         isValid: false,
@@ -155,9 +155,9 @@ export default function Home() {
       };
     }
 
-    return { 
-      isValid: true, 
-      needsConversion: isHeifFormat 
+    return {
+      isValid: true,
+      needsConversion: isHeifFormat
     };
   };
 
@@ -198,102 +198,141 @@ export default function Home() {
 
   // 画像を圧縮・変換する関数（HEIF→JPEG変換対応）
   const compressImage = (file: File, maxWidth: number = 800, maxHeight: number = 600, quality: number = 0.8): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-      
-      // HEIF/HEIC形式の検出
-      const isHeifFormat = file.type === 'image/heif' || file.type === 'image/heic' || 
-                          file.name.toLowerCase().endsWith('.heif') || 
-                          file.name.toLowerCase().endsWith('.heic');
-      
-      img.onload = () => {
-        try {
-          // アスペクト比を保持してリサイズ
-          let { width, height } = img;
-          const originalWidth = width;
-          const originalHeight = height;
-          
-          if (width > height) {
-            if (width > maxWidth) {
-              height = (height * maxWidth) / width;
-              width = maxWidth;
+    return new Promise(async (resolve, reject) => {
+      try {
+        // HEIF/HEIC形式の検出
+        const isHeifFormat = file.type === 'image/heif' || file.type === 'image/heic' ||
+          file.name.toLowerCase().endsWith('.heif') ||
+          file.name.toLowerCase().endsWith('.heic');
+
+        let processFile = file;
+
+        // HEIF/HEIC形式の場合、事前にJPEGに変換
+        if (isHeifFormat) {
+          console.log('🔄 Converting HEIF/HEIC to JPEG...');
+
+          try {
+            // heic2anyライブラリを使用してJPEGに変換
+            if (typeof window.heic2any === 'undefined') {
+              throw new Error('HEIF変換ライブラリが読み込まれていません');
             }
-          } else {
-            if (height > maxHeight) {
-              width = (width * maxHeight) / height;
-              height = maxHeight;
-            }
-          }
-          
-          canvas.width = width;
-          canvas.height = height;
-          
-          if (ctx) {
-            // 白い背景を設定（透明度対応、HEIF変換時の安定性向上）
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, width, height);
-            
-            // 高品質な描画設定
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // 常にJPEGで出力（HEIF形式も含め、互換性を最大化）
-            const dataUrl = canvas.toDataURL('image/jpeg', quality);
-            
-            console.log('✅ Image processing successful:', {
-              originalFormat: file.type || 'unknown',
-              originalSize: file.size,
-              originalDimensions: `${originalWidth}x${originalHeight}`,
-              outputDimensions: `${width}x${height}`,
-              outputFormat: 'JPEG',
-              outputSize: dataUrl.length,
-              wasHeif: isHeifFormat,
-              conversionRatio: Math.round((dataUrl.length / file.size) * 100) + '%'
+
+            const convertedBlob = await window.heic2any({
+              blob: file,
+              toType: 'image/jpeg',
+              quality: 0.9
             });
-            
-            // URL cleanup
-            URL.revokeObjectURL(img.src);
-            
-            resolve(dataUrl);
-          } else {
-            reject(new Error('Canvas context not available'));
+
+            // BlobからFileオブジェクトを作成
+            processFile = new File([convertedBlob as Blob],
+              file.name.replace(/\.(heif|heic)$/i, '.jpg'),
+              { type: 'image/jpeg' });
+
+            console.log('✅ HEIF → JPEG conversion successful');
+          } catch (heifError) {
+            console.error('❌ HEIF conversion failed:', heifError);
+            reject(new Error('HEIF形式の変換に失敗しました。JPEGまたはPNG形式の画像をお試しください。'));
+            return;
           }
-        } catch (error) {
-          console.error('❌ Canvas processing failed:', error);
-          URL.revokeObjectURL(img.src);
-          reject(error);
         }
-      };
-      
-      img.onerror = (error) => {
-        console.error('❌ Image load failed:', {
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size,
-          isHeif: isHeifFormat,
-          error: error
-        });
-        URL.revokeObjectURL(img.src);
-        reject(new Error(`画像の読み込みに失敗しました。${isHeifFormat ? 'HEIF形式の変換' : 'ファイル形式'}に問題がある可能性があります。`));
-      };
-      
-      // ファイル情報をログ出力
-      console.log('📸 Starting image processing:', {
-        fileName: file.name,
-        fileType: file.type,
-        fileSize: `${Math.round(file.size / 1024)}KB`,
-        isHeifFormat: isHeifFormat,
-        needsConversion: isHeifFormat ? 'HEIF → JPEG' : 'Compression only'
-      });
-      
-      // Blob URLを作成して画像を読み込み
-      img.src = URL.createObjectURL(file);
+
+        // 通常の画像処理
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+
+        img.onload = () => {
+          try {
+            // アスペクト比を保持してリサイズ
+            let { width, height } = img;
+            const originalWidth = width;
+            const originalHeight = height;
+
+            if (width > height) {
+              if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+              }
+            } else {
+              if (height > maxHeight) {
+                width = (width * maxHeight) / height;
+                height = maxHeight;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+
+            if (ctx) {
+              // 白い背景を設定
+              ctx.fillStyle = '#FFFFFF';
+              ctx.fillRect(0, 0, width, height);
+
+              // 高品質な描画設定
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+
+              ctx.drawImage(img, 0, 0, width, height);
+
+              // JPEGで出力
+              const dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+              console.log('✅ Image processing successful:', {
+                originalFormat: file.type || 'unknown',
+                originalSize: file.size,
+                originalDimensions: `${originalWidth}x${originalHeight}`,
+                outputDimensions: `${width}x${height}`,
+                outputFormat: 'JPEG',
+                outputSize: dataUrl.length,
+                wasHeifConverted: isHeifFormat,
+                conversionRatio: Math.round((dataUrl.length / file.size) * 100) + '%'
+              });
+
+              // URL cleanup
+              URL.revokeObjectURL(img.src);
+
+              resolve(dataUrl);
+            } else {
+              reject(new Error('Canvas context not available'));
+            }
+          } catch (error) {
+            console.error('❌ Canvas processing failed:', error);
+            URL.revokeObjectURL(img.src);
+            reject(error);
+          }
+        };
+
+        img.onerror = (error) => {
+          console.error('❌ Image load failed:', {
+            fileName: processFile.name,
+            fileType: processFile.type,
+            fileSize: processFile.size,
+            error: error
+          });
+          URL.revokeObjectURL(img.src);
+          reject(new Error('画像の読み込みに失敗しました。ファイル形式に問題がある可能性があります。'));
+        };
+
+        // 変換後のファイルを読み込み
+        img.src = URL.createObjectURL(processFile);
+
+      } catch (error) {
+        console.error('❌ Image processing failed:', error);
+        reject(error);
+      }
     });
   };
+
+  // TypeScript型定義の追加
+  declare global {
+    interface Window {
+      heic2any: (options: {
+        blob: File | Blob;
+        toType: string;
+        quality?: number;
+      }) => Promise<Blob | Blob[]>;
+    }
+  }
 
   // ファイル選択（HEIF→JPEG変換対応）
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -317,11 +356,11 @@ export default function Home() {
 
     try {
       setIsLoading(true); // 変換中の表示
-      
+
       // 画像を圧縮・変換してプレビュー
       const processedImage = await compressImage(file);
       setSelectedImage(processedImage);
-      
+
       // GA4 イベント送信: 画像アップロード
       trackEvent('image_uploaded', {
         event_category: 'user_action',
@@ -330,17 +369,17 @@ export default function Home() {
         was_heif_converted: validation.needsConversion || false,
         upload_method: 'file_select'
       });
-      
+
       // 変換成功メッセージ
       if (validation.needsConversion) {
         console.log('✅ HEIF → JPEG conversion completed successfully');
       } else {
         console.log('✅ Image processing completed successfully');
       }
-      
+
     } catch (error) {
       console.error('❌ Image processing failed:', error);
-      
+
       // エラーメッセージの詳細化
       let errorMessage = '画像の処理に失敗しました。';
       if (validation.needsConversion) {
@@ -352,9 +391,9 @@ export default function Home() {
           errorMessage = 'ブラウザの画像処理機能でエラーが発生しました。別のブラウザまたは別の画像をお試しください。';
         }
       }
-      
+
       alert(errorMessage);
-      
+
       // ファイル入力をリセット
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -370,7 +409,7 @@ export default function Home() {
     if (dataUrl) {
       setCapturedPhoto(dataUrl);
       console.log('📸 Photo captured for preview');
-      
+
       // GA4 イベント送信: 写真撮影
       trackEvent('photo_taken', {
         event_category: 'camera_interaction',
@@ -385,7 +424,7 @@ export default function Home() {
   const retakePhoto = (): void => {
     setCapturedPhoto(null);
     console.log('🔄 Retaking photo');
-    
+
     // GA4 イベント送信: 撮り直し
     trackEvent('photo_retaken', {
       event_category: 'camera_interaction',
@@ -397,17 +436,17 @@ export default function Home() {
   const capturePhoto = (): string => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
-    
+
     if (!canvas || !video) return '';
-    
+
     const context = canvas.getContext('2d');
     if (!context) return '';
-    
+
     // リサイズして圧縮
     const maxWidth = 800;
     const maxHeight = 600;
     let { width, height } = { width: video.videoWidth, height: video.videoHeight };
-    
+
     if (width > height) {
       if (width > maxWidth) {
         height = (height * maxWidth) / width;
@@ -419,13 +458,13 @@ export default function Home() {
         height = maxHeight;
       }
     }
-    
+
     canvas.width = width;
     canvas.height = height;
     context.drawImage(video, 0, 0, width, height);
-    
+
     const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-    
+
     // GA4 イベント送信: カメラ撮影
     if (dataUrl) {
       trackEvent('camera_capture', {
@@ -434,7 +473,7 @@ export default function Home() {
         upload_method: 'camera'
       });
     }
-    
+
     return dataUrl;
   };
 
@@ -452,7 +491,7 @@ export default function Home() {
   // アイテム分析
   const analyzeItem = async () => {
     let imageData: string;
-    
+
     if (inputMode === 'camera') {
       if (!capturedPhoto) {
         alert('まず写真を撮影してください。');
@@ -471,7 +510,7 @@ export default function Home() {
 
     try {
       const rarity = determineRarity();
-      
+
       const response = await fetch('/api/analyze-item', {
         method: 'POST',
         headers: {
@@ -489,12 +528,12 @@ export default function Home() {
       }
 
       const result = await response.json();
-      
+
       // APIレスポンスのバリデーション
       if (!result.name || !result.description) {
         throw new Error('APIから不正なレスポンスが返されました。');
       }
-      
+
       const newItem: Item = {
         id: Date.now(),
         name: result.name,
@@ -508,7 +547,7 @@ export default function Home() {
       setCurrentItem(newItem);
       const updatedItems = [newItem, ...items];
       saveItems(updatedItems);
-      
+
       // GA4 イベント送信: アイテム鑑定
       trackEvent('item_analyzed', {
         event_category: 'engagement',
@@ -517,10 +556,10 @@ export default function Home() {
         item_name: result.name || 'unknown',
         input_method: inputMode
       });
-      
+
     } catch (error) {
       console.error('分析エラー:', error);
-      
+
       let errorMessage = 'アイテムの分析に失敗しました。';
       if (error instanceof Error) {
         if (error.message.includes('Failed to fetch')) {
@@ -533,7 +572,7 @@ export default function Home() {
           errorMessage += ` (${error.message})`;
         }
       }
-      
+
       alert(errorMessage);
     } finally {
       setIsLoading(false);
@@ -572,7 +611,7 @@ export default function Home() {
         .register('/sw.js')
         .then((registration) => {
           console.log('✅ Service Worker registered successfully:', registration);
-          
+
           // GA4 イベント送信: PWA対応
           trackEvent('pwa_ready', {
             event_category: 'pwa',
@@ -589,7 +628,7 @@ export default function Home() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const shortcut = urlParams.get('shortcut');
-    
+
     if (shortcut === 'collection') {
       setShowCollection(true);
     } else if (shortcut === 'analyze') {
@@ -616,17 +655,17 @@ export default function Home() {
         <h1>⚔️ 魔法アイテム図鑑</h1>
         <p className="subtitle">身の回りのアイテムに秘められた魔法の力を解き明かそう</p>
         <div className="nav-buttons">
-          <button 
+          <button
             className={`nav-btn ${!showCollection ? 'active' : ''}`}
             onClick={() => setShowCollection(false)}
           >
             🔍 鑑定
           </button>
-          <button 
+          <button
             className={`nav-btn ${showCollection ? 'active' : ''}`}
             onClick={() => {
               setShowCollection(true);
-              
+
               // GA4 イベント送信: 図鑑表示
               trackEvent('collection_viewed', {
                 event_category: 'navigation',
@@ -643,13 +682,13 @@ export default function Home() {
         <main className="main-content">
           {/* 入力モード選択 */}
           <div className="input-mode-selector">
-            <button 
+            <button
               className={`mode-btn ${inputMode === 'camera' ? 'active' : ''}`}
               onClick={() => switchInputMode('camera')}
             >
               📹 カメラ撮影
             </button>
-            <button 
+            <button
               className={`mode-btn ${inputMode === 'file' ? 'active' : ''}`}
               onClick={() => switchInputMode('file')}
             >
@@ -666,7 +705,7 @@ export default function Home() {
                     <video ref={videoRef} autoPlay playsInline className="camera-video" />
                   </div>
                   <canvas ref={canvasRef} style={{ display: 'none' }} />
-                  
+
                   <div className="camera-controls">
                     {!stream ? (
                       <button onClick={startCamera} className="camera-btn start">
@@ -677,8 +716,8 @@ export default function Home() {
                         <button onClick={stopCamera} className="camera-btn stop">
                           ⏹️ カメラ停止
                         </button>
-                        <button 
-                          onClick={takePhoto} 
+                        <button
+                          onClick={takePhoto}
                           className="camera-btn capture"
                           disabled={isLoading}
                         >
@@ -695,15 +734,15 @@ export default function Home() {
                     <img src={capturedPhoto} alt="撮影した写真" className="preview-image" />
                   </div>
                   <div className="photo-actions">
-                    <button 
-                      onClick={retakePhoto} 
+                    <button
+                      onClick={retakePhoto}
                       className="retake-btn"
                       disabled={isLoading}
                     >
                       🔄 撮り直し
                     </button>
-                    <button 
-                      onClick={analyzeItem} 
+                    <button
+                      onClick={analyzeItem}
                       className="analyze-btn"
                       disabled={isLoading}
                     >
@@ -722,7 +761,7 @@ export default function Home() {
                 onChange={handleFileSelect}
                 style={{ display: 'none' }}
               />
-              
+
               <div className="file-upload-area">
                 {selectedImage ? (
                   <div className="selected-image-preview">
@@ -730,15 +769,15 @@ export default function Home() {
                       <img src={selectedImage} alt="選択された画像" className="preview-image" />
                     </div>
                     <div className="image-actions">
-                      <button 
-                        onClick={() => fileInputRef.current?.click()} 
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
                         className="change-image-btn"
                         disabled={isLoading}
                       >
                         {isLoading ? '🔄 変換中...' : '📎 画像を変更'}
                       </button>
-                      <button 
-                        onClick={analyzeItem} 
+                      <button
+                        onClick={analyzeItem}
                         className="analyze-btn"
                         disabled={isLoading}
                       >
@@ -747,7 +786,7 @@ export default function Home() {
                     </div>
                   </div>
                 ) : (
-                  <div 
+                  <div
                     className="file-drop-zone"
                     onClick={() => !isLoading && fileInputRef.current?.click()}
                     style={{ opacity: isLoading ? 0.6 : 1, cursor: isLoading ? 'not-allowed' : 'pointer' }}
@@ -771,9 +810,9 @@ export default function Home() {
 
           {currentItem && (
             <div className="item-display">
-              <div 
+              <div
                 className="item-card"
-                style={{ 
+                style={{
                   borderColor: rarities[currentItem.rarity as keyof typeof rarities].color,
                   boxShadow: rarities[currentItem.rarity as keyof typeof rarities].glow
                 }}
@@ -786,16 +825,16 @@ export default function Home() {
                     {rarities[currentItem.rarity as keyof typeof rarities].name}
                   </span>
                 </div>
-                
+
                 <div className="image-container">
                   <img src={currentItem.image} alt={currentItem.name} className="item-image" />
                 </div>
-                
+
                 <div className="item-description">
                   <h3>説明</h3>
                   <p>{currentItem.description}</p>
                 </div>
-                
+
                 {currentItem.effect && (
                   <div className="item-effect">
                     <h3>魔法効果</h3>
@@ -814,8 +853,8 @@ export default function Home() {
           ) : (
             <div className="collection-grid">
               {items.map(item => (
-                <div 
-                  key={item.id} 
+                <div
+                  key={item.id}
                   className="collection-item"
                   style={{ borderColor: rarities[item.rarity as keyof typeof rarities].color }}
                   onClick={() => handleCollectionItemClick(item)}
@@ -828,7 +867,7 @@ export default function Home() {
                     <span className="rarity-badge" style={{ color: rarities[item.rarity as keyof typeof rarities].color }}>
                       {rarities[item.rarity as keyof typeof rarities].name}
                     </span>
-                    <button 
+                    <button
                       className="delete-btn"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -871,25 +910,25 @@ export default function Home() {
               </span>
               <button className="close-btn" onClick={closeModal}>✕</button>
             </div>
-            
+
             <div className="modal-body">
               <div className="modal-image-container">
                 <img src={modalItem.image} alt={modalItem.name} className="modal-image" />
               </div>
-              
+
               <div className="modal-text">
                 <div className="modal-description">
                   <h3>説明</h3>
                   <p>{modalItem.description}</p>
                 </div>
-                
+
                 {modalItem.effect && (
                   <div className="modal-effect">
                     <h3>魔法効果</h3>
                     <p>{modalItem.effect}</p>
                   </div>
                 )}
-                
+
                 <div className="modal-timestamp">
                   <small>発見日時: {new Date(modalItem.timestamp).toLocaleString('ja-JP')}</small>
                 </div>

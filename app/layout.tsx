@@ -61,6 +61,8 @@ export default function RootLayout({
             `,
           }}
         />
+        {/* HEIF変換ライブラリ追加 */}
+        <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
